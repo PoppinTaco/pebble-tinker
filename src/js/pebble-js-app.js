@@ -1,23 +1,51 @@
-var deviceId = "YOURDEVICEID";
-var accessToken = "YOURACCESSTOKEN";
+var deviceId = "";
+var accessToken = "";
 
-var REST = function (url, type, callback) {
-	var xhr = new XMLHttpRequest();
-	xhr.onload =  function () {
-      callback(this.responseText);
-	};
-	xhr.open(type, url);
-	xhr.send();
+/*
+ * Import jQuery
+ */
+var importjQuery = function() {
+	if(typeof jQuery === "undefined") {
+		var script = document.createElement('script');
+		script.src = 'http://code.jquery.com/jquery-latest.min.js';
+		script.type = 'text/javascript';
+		document.getElementsByTagName('head')[0].appendChild(script);
+	} else {
+		console.log("jQuery already exists: " + (typeof jQuery));
+	}
 };
 
+/**************** Pebble helpers ****************/
+var hasKey = function(dict, key) {
+	return dict.payload[key] != undefined;
+};
+
+var getValue = function(dict, key) {
+	if(hasKey(dict, key)) {
+		return "" + dict.payload[key];
+	} else {
+		console.log("ERROR: Key '" + key + "' does not exist in received dictionary");
+		return undefined;
+	}
+}
+/************************************************/
+
 Pebble.addEventListener("ready",
-  function(e) {
-  	console.log("Pebble JS ready!");
-  }
+	function(e) {
+		importjQuery();
+		console.log("Pebble JS ready!");
+	}
 );
 
-var parseCloudResponse = function(text) {
-	var json = JSON.parse(text);
+var updatePebble = function(text, isJSON) {
+	var json = null;
+	if(!isJSON) {
+		json = JSON.parse(text);
+	} else {
+		json = text;
+	}
+
+	console.log("return_value=" + json.return_value);
 	
 	Pebble.sendAppMessage(
 		{"PIN_EVENT":json.return_value},
@@ -30,44 +58,49 @@ var parseCloudResponse = function(text) {
 	);
 };
 
+var success = function(data) {
+	console.log("Response received: " + JSON.stringify(data));
+	updatePebble(data, true);
+};
+
 Pebble.addEventListener("appmessage",
-	function(e) {
+	function(dict) {
 		//On request?
-		if(e.payload["PIN_ON"] != undefined) {
-			console.log("Received turn on pin: " + e.payload["PIN_ON"]);
+		if(hasKey(dict, "PIN_ON")) {
+			console.log("Received turn on pin: " + getValue(dict, "PIN_ON"));
 			
-			//Construct url
-			var url = "https://api.spark.io/v1/devices/" + deviceId + "/on?access_token=" + accessToken + "&args=" + e.payload["PIN_ON"];
-			console.log("Sent request to: " + url);
-			
-			//Send
-			REST(url, "POST", 
-				function(text) {
-					console.log("Response received: " + text);
-					
-					//Parse result
-					parseCloudResponse(text);
-				}
-			);
+			//Construct URL
+			var url = "https://api.spark.io/v1/devices/" + deviceId + "/on?access_token=" + accessToken;
+
+			console.log("jQuery AJAX: url=" + url + " args=" + getValue(dict, "PIN_ON"));
+
+			//Send with jQuery
+			$.ajax({
+			  type: "POST",
+			  url: url,
+			  data: {"args":getValue(dict, "PIN_ON")},
+			  success: success,
+			  dataType: "json"
+			});
 		} 
 		
 		//Off request?
-		if(e.payload["PIN_OFF"] != undefined) {
-			console.log("Received turn off pin: " + e.payload["PIN_OFF"]);
-			
-			//Construct url
-			var url = "https://api.spark.io/v1/devices/" + deviceId + "/off?access_token=" + accessToken + "&args=" + e.payload["PIN_OFF"];
-			console.log("Sent request to: " + url);
-			
-			//Send
-			REST(url, "POST", 
-				function(text) {
-					console.log("Response received: " + text);
-					
-					//Parse result
-					parseCloudResponse(text);
-				}
-			);
-		}
+		if(hasKey(dict, "PIN_OFF")) {
+			console.log("Received turn off pin: " + getValue(dict, "PIN_OFF"));
+		
+			//Construct URL
+			var url = "https://api.spark.io/v1/devices/" + deviceId + "/off?access_token=" + accessToken;
+
+			console.log("jQuery AJAX: url=" + url + " args=" + getValue(dict, "PIN_OFF"));
+
+			//Send with jQuery
+			$.ajax({
+			  type: "POST",
+			  url: url,
+			  data: {"args":getValue(dict, "PIN_OFF")},
+			  success: success,
+			  dataType: "json"
+			});
+		} 
 	}
 );
