@@ -5,14 +5,10 @@ var accessToken = "";
  * Import jQuery
  */
 var importjQuery = function() {
-	if(typeof jQuery === "undefined") {
-		var script = document.createElement('script');
-		script.src = 'http://code.jquery.com/jquery-latest.min.js';
-		script.type = 'text/javascript';
-		document.getElementsByTagName('head')[0].appendChild(script);
-	} else {
-		console.log("jQuery already exists: " + (typeof jQuery));
-	}
+	var script = document.createElement('script');
+	script.src = 'http://code.jquery.com/jquery-latest.min.js';
+	script.type = 'text/javascript';
+	document.getElementsByTagName('head')[0].appendChild(script);
 };
 
 /**************** Pebble helpers ****************/
@@ -27,7 +23,8 @@ var getValue = function(dict, key) {
 		console.log("ERROR: Key '" + key + "' does not exist in received dictionary");
 		return undefined;
 	}
-}
+};
+
 /************************************************/
 
 Pebble.addEventListener("ready",
@@ -37,14 +34,7 @@ Pebble.addEventListener("ready",
 	}
 );
 
-var updatePebble = function(text, isJSON) {
-	var json = null;
-	if(!isJSON) {
-		json = JSON.parse(text);
-	} else {
-		json = text;
-	}
-
+var updatePebble = function(json) {
 	console.log("return_value=" + json.return_value);
 	
 	Pebble.sendAppMessage(
@@ -58,9 +48,9 @@ var updatePebble = function(text, isJSON) {
 	);
 };
 
-var success = function(data) {
-	console.log("Response received: " + JSON.stringify(data));
-	updatePebble(data, true);
+var success = function(json) {
+	console.log("Response received: " + JSON.stringify(json));
+	updatePebble(json);
 };
 
 Pebble.addEventListener("appmessage",
@@ -72,7 +62,7 @@ Pebble.addEventListener("appmessage",
 			//Construct URL
 			var url = "https://api.spark.io/v1/devices/" + deviceId + "/on?access_token=" + accessToken;
 
-			console.log("jQuery AJAX: url=" + url + " args=" + getValue(dict, "PIN_ON"));
+			console.log("jQuery AJAX args=" + getValue(dict, "PIN_ON"));
 
 			//Send with jQuery
 			$.ajax({
@@ -91,7 +81,7 @@ Pebble.addEventListener("appmessage",
 			//Construct URL
 			var url = "https://api.spark.io/v1/devices/" + deviceId + "/off?access_token=" + accessToken;
 
-			console.log("jQuery AJAX: url=" + url + " args=" + getValue(dict, "PIN_OFF"));
+			console.log("jQuery AJAX args=" + getValue(dict, "PIN_OFF"));
 
 			//Send with jQuery
 			$.ajax({

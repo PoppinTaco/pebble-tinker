@@ -4,7 +4,7 @@
 #define APP_TITLE_HEIGHT 16
 #define HEADER_HEIGHT 16
 #define CELL_HEIGHT 20
-#define TOTAL_PINS 8
+#define TOTAL_PINS 8	//D0 - D7
 
 //Keys
 enum
@@ -23,16 +23,45 @@ enum
 	STATE_AWAITING_OFF = -2
 };
 
+//Pin object
+struct Pin {
+	int state;
+	InverterLayer *layer;
+};
+
 //UI elements
 static Window *window;
-static MenuLayer *menu_layer;
+static BitmapLayer *background_layer;
+static GBitmap *background_bitmap;
+static InverterLayer *cursor_layer;
 
-//State
-static int pin_states[TOTAL_PINS];	//-1 awaiting on, -2 awaiting off, 1 on, 0 off
+//App State
+static struct Pin *pins[TOTAL_PINS];
+static int current_pin = 0;
+
+/*********************************** Pin Structure ******************************************/
+
+static struct Pin* pin_create()
+{
+	struct Pin *this = malloc(sizeof(struct Pin));
+	this->state = STATE_OFF;
+
+	this->layer = inverter_layer_create(GRect(0, 0, 0, 0));
+	layer_add_child(window_get_root_layer(window), inverter_layer_get_layer(this->layer));
+
+	return this;
+}
+
+static void pin_destroy(struct Pin *this)
+{
+	inverter_layer_destroy(this->layer);
+
+	free(this);
+}
 
 /****************************** App Message callbacks ***************************************/
 
-void process_tuple(Tuple *t)
+static void process_tuple(Tuple *t)
 {
 	int key = t->key;
 	int value = t->value->int32;
@@ -41,13 +70,19 @@ void process_tuple(Tuple *t)
 	{
 	case PIN_EVENT:
 		//Toggle achieved
-		switch(pin_states[value])
+		switch(pins[value]->state)
 		{
 		case STATE_AWAITING_ON:
-			pin_states[value] = STATE_ON;
+			pins[value]->state = STATE_ON;
+
+			//Animate - layer, start, finish, duration, delay
+			cl_animate_layer(inverter_layer_get_layer(pins[value]->layer), GRect(23, 22 + (value * 14), 6, 7), GRect(17, 22 + (value * 14), 12, 7), 500, 0);
 			break;
 		case STATE_AWAITING_OFF:
-			pin_states[value] = STATE_OFF;
+			pins[value]->state = STATE_OFF;
+
+			//Animate
+			cl_animate_layer(inverter_layer_get_layer(pins[value]->layer), GRect(23, 22 + (value * 14), 6, 7), GRect(29, 22 + (value * 14), 0, 7), 500, 0);
 			break;
 		}
 		break;
@@ -55,14 +90,9 @@ void process_tuple(Tuple *t)
 		cl_applog("Unknown key!");
 		break;
 	}
-
-	menu_layer_reload_data(menu_layer);
 }
 
-/*
- * In received handler
- */
-void in_received_handler(DictionaryIterator *iter, void *context) 
+static void in_received_handler(DictionaryIterator *iter, void *context) 
 {
 	Tuple *t = dict_read_first(iter);
 	if(t)
@@ -80,142 +110,90 @@ void in_received_handler(DictionaryIterator *iter, void *context)
 	}
 }
 
-/******************************* MenuLayer Functions *********************************/
+/****************************** Clicks ***********************************************/
 
-/*
- * Get Header height callback
- */
-int16_t get_header_height(MenuLayer *menu_layer, uint16_t section_index, void *callback_context)
+static void up_click_handler(ClickRecognizerRef recognizer, void *context)
 {
-	return HEADER_HEIGHT;
-}
-
-/*
- *Draw Header callback
- */
-void draw_header(GContext *ctx, Layer *cell_layer, uint16_t section_index, void *callback_context)
-{
-	menu_cell_basic_header_draw(ctx, cell_layer, "Spark Core Pins");
-}
-
-/*
- * Get cell height
- */
-int16_t get_cell_height(MenuLayer *menu_layer, MenuIndex *cell_index, void *callback_context)
-{
-	return CELL_HEIGHT;
-}
-
-/*
- * Draw a MenuLayer row
- */
-void draw_row_callback(GContext *ctx, Layer *cell_layer, MenuIndex *cell_index, void *callback_context)
-{	
-	int index = cell_index->row;	
-	
-	//Draw empty LED
-	graphics_context_set_stroke_color(ctx, GColorBlack);
-	graphics_context_set_fill_color(ctx, GColorWhite);
-	graphics_draw_circle(ctx, GPoint(15, 9), 9);
-	
-	graphics_context_set_text_color(ctx, GColorBlack);
-	graphics_context_set_fill_color(ctx, GColorBlack);
-	
-	//If on, show LED on
-	switch(pin_states[index])
+	//Scroll up
+	if(current_pin > 0)
 	{
-	case STATE_AWAITING_ON:	//Waiting for response
-		graphics_draw_circle(ctx, GPoint(15, 9), 4);
-		break;
-	case STATE_ON:		//On
-		graphics_fill_circle(ctx, GPoint(15, 9), 4);
-		break;
-	}	
-	
-	//Draw text
-	graphics_context_set_text_color(ctx, GColorBlack);
-	char* text = malloc(sizeof("Pin D0: WAITING"));
-	switch(pin_states[index])
-	{
-	case STATE_OFF:
-		snprintf(text, sizeof("Pin D0: OFF"), "Pin D%d: OFF", index);
-		break;
-	case STATE_ON:
-		snprintf(text, sizeof("Pin D0: ON"), "Pin D%d: ON", index);
-		break;
-	default:
-		snprintf(text, sizeof("Pin D0: WAITING"), "Pin D%d: WAITING", index);
-		break;
+		current_pin--;
+
+		layer_set_frame(inverter_layer_get_layer(cursor_layer), GRect(31, 20 + (current_pin * 14), 4, 11));
 	}
-	graphics_draw_text(ctx, text, fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD), GRect(30, -3, 144, 30), GTextOverflowModeWordWrap, GTextAlignmentLeft, NULL);
-	free(text);
 }
 
-/*
- * Get number of sections callback
- */
-uint16_t get_num_sections(MenuLayer *menu_layer, void *callback_context)
+static void down_click_handler(ClickRecognizerRef recognizer, void *context)
 {
-	return 1;
+	//Scroll down
+	if(current_pin < TOTAL_PINS - 1)
+	{
+		current_pin++;
+
+		layer_set_frame(inverter_layer_get_layer(cursor_layer), GRect(31, 20 + (current_pin * 14), 4, 11));
+	}
 }
 
-/*
- * Get the number of rows in the MenuLayer
- */
-uint16_t get_num_rows(MenuLayer *menu_layer, uint16_t section_index, void *callback_context)
+static void single_click_handler(ClickRecognizerRef recognizer, void *context)
 {
-	return TOTAL_PINS;
-}
-
-/*
- * Select click callback
- */
-void select_single_click(MenuLayer *menu_layer, MenuIndex *cell_index, void *callback_context) 
-{
-	int index = cell_index->row;
-	
 	//Send to Core
-	if(pin_states[index] == STATE_OFF)
+	if(pins[current_pin]->state == STATE_OFF)
 	{
 		//Awaiting ON
-		cl_send_int(PIN_ON, index);
-		pin_states[index] = STATE_AWAITING_ON;
+		cl_send_int(PIN_ON, current_pin);
+		pins[current_pin]->state = STATE_AWAITING_ON;
+
+		cl_animate_layer(inverter_layer_get_layer(pins[current_pin]->layer), GRect(29, 22 + (current_pin * 14), 0, 7), GRect(23, 22 + (current_pin * 14), 6, 7), 500, 0);
 	}
-	else if(pin_states[index] == STATE_ON)
+	else if(pins[current_pin]->state == STATE_ON)
 	{
 		//Awaiting OFF
-		cl_send_int(PIN_OFF, index);
-		pin_states[index] = STATE_AWAITING_OFF;
+		cl_send_int(PIN_OFF, current_pin);
+		pins[current_pin]->state = STATE_AWAITING_OFF;
+
+		cl_animate_layer(inverter_layer_get_layer(pins[current_pin]->layer), GRect(17, 22 + (current_pin * 14), 12, 7), GRect(23, 22 + (current_pin * 14), 6, 7), 500, 0);
 	}
-	
-	//Finally
-	menu_layer_reload_data(menu_layer);
+}
+
+static void click_config_provider(void *context)
+{
+	window_single_click_subscribe(BUTTON_ID_SELECT, (ClickHandler)single_click_handler);
+	window_single_click_subscribe(BUTTON_ID_UP, (ClickHandler)up_click_handler);
+	window_single_click_subscribe(BUTTON_ID_DOWN, (ClickHandler)down_click_handler);
 }
 
 /******************************** Window Lifecycle ***********************************/
 
 static void window_load(Window *window) 
 {
-	//Menu Layer
-	menu_layer = menu_layer_create(GRect(0, 0, 144, 168 - APP_TITLE_HEIGHT));
-	menu_layer_set_click_config_onto_window(menu_layer, window);
-	menu_layer_set_callbacks(menu_layer, NULL, (MenuLayerCallbacks) {
-		.get_header_height = (MenuLayerGetHeaderHeightCallback) get_header_height,
-		.draw_header = (MenuLayerDrawHeaderCallback) draw_header,
-		.get_cell_height = (MenuLayerGetCellHeightCallback) get_cell_height,
-		.draw_row = (MenuLayerDrawRowCallback) draw_row_callback,
-		.get_num_sections = (MenuLayerGetNumberOfSectionsCallback) get_num_sections,
-		.get_num_rows = (MenuLayerGetNumberOfRowsInSectionsCallback) get_num_rows,
-		.select_click = (MenuLayerSelectCallback) select_single_click
-	});
-		
-	layer_add_child(window_get_root_layer(window), menu_layer_get_layer(menu_layer));
+	//Background
+	background_bitmap = gbitmap_create_with_resource(RESOURCE_ID_BACKGROUND);
+	background_layer = bitmap_layer_create(GRect(0, 0, 144, 152));
+	bitmap_layer_set_bitmap(background_layer, background_bitmap);
+	layer_add_child(window_get_root_layer(window), bitmap_layer_get_layer(background_layer));
+
+	//Create InverterLayers
+	for(int i = 0; i < TOTAL_PINS; i++)
+	{
+		pins[i] = pin_create();
+	}
+
+	//Cursor
+	cursor_layer = inverter_layer_create(GRect(31, 20, 4, 11));
+	layer_add_child(window_get_root_layer(window), inverter_layer_get_layer(cursor_layer));
 }
 
 static void window_unload(Window *window) 
 {
-	//Free menu layer
-	menu_layer_destroy(menu_layer);
+	bitmap_layer_destroy(background_layer);
+	gbitmap_destroy(background_bitmap);
+	inverter_layer_destroy(cursor_layer);
+
+	//Destroy InverterLayers
+	for(int i = 0; i < TOTAL_PINS; i++)
+	{
+		pin_destroy(pins[i]);
+	}
 }
 
 /***************************** App Liecycle ******************************************/
@@ -225,6 +203,7 @@ static void init(void)
 	cl_set_debug(true);
 
 	window = window_create();
+	window_set_click_config_provider(window, (ClickConfigProvider)click_config_provider);
 	window_set_window_handlers(window, (WindowHandlers) {
 		.load = window_load,
 		.unload = window_unload,
