@@ -8,7 +8,7 @@ UP and DOWN button control cursor, SELECT requests toggle. Progress is shown as 
 
 1. Add your DEVICE ID and ACCESS TOKEN to the top of the JS file.
 2. Compile and upload .pbw to your Pebble.
-3. Upload the spark_src/firmware.ino file to your Core.
+3. Upload the spark_src/pebbletinker.ino file to your Core.
 4. Open the Pebble watchapp and use buttons to select and toggle pins.
 
 ###Screenshot
