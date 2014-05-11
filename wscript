@@ -17,12 +17,8 @@ def configure(ctx):
 def build(ctx):
     ctx.load('pebble_sdk')
 
-    ctx.pbl_program(
-        source=ctx.path.ant_glob(['src/**/*.c']),
-        target='pebble-app.elf',
-        includes=[ctx.path.find_dir('ext/cl_util/include').abspath()],
-        stlibpath=[ctx.path.find_dir('ext/cl_util/lib').abspath()],
-        stlib=['cl_util'])
+    ctx.pbl_program(source=ctx.path.ant_glob('src/**/*.c'),
+                    target='pebble-app.elf')
 
     ctx.pbl_bundle(elf='pebble-app.elf',
                    js=ctx.path.ant_glob('src/js/**/*.js'))
